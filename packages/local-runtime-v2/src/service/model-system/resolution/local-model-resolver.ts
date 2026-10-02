@@ -488,9 +488,55 @@ function resolveConfiguredThinkingProtocol(
   selectedEffort: string | undefined,
 ): ByokThinkingProtocol | undefined {
   const configurable = input.customProvider || input.api === 'openai-codex-responses';
-  if (!configurable || (!thinkingToggleOn && !selectedEffort)) return undefined;
+  if (!configurable) return undefined;
+  if (!thinkingToggleOn && !selectedEffort) {
+    return resolveExplicitThinkingOffProtocol(input.api, input.modelCompat?.thinkingFormat);
+  }
   const api = supportedByokThinkingApi(input.api);
   return api ? resolveByokThinkingProtocol(api, selectedEffort, input.modelId) : undefined;
+}
+
+/**
+ * Some BYOK wire protocols require an explicit off-signal: the upstream
+ * template defaults to thinking ON unless the request says otherwise, so
+ * silently sending no thinking-related field at all (the normal "nothing to
+ * compute when the toggle is off" case) leaves thinking running regardless
+ * of what the TUI shows. Only formats proven to need this get a patch; every
+ * other format keeps returning undefined, same as before.
+ */
+function resolveExplicitThinkingOffProtocol(
+  api: Api,
+  thinkingFormat: LocalModelCompatOverrides['thinkingFormat'],
+): ByokThinkingProtocol | undefined {
+  if (api !== 'openai-completions') return undefined;
+  const requestPatch = explicitThinkingOffRequestPatch(thinkingFormat);
+  if (!requestPatch) return undefined;
+  const piLevel: PiThinkingLevel = 'high';
+  return {
+    effort: 'off',
+    enabled: false,
+    piLevel,
+    thinkingLevelMap: { [piLevel]: 'off' },
+    requestPatch,
+  };
+}
+
+function explicitThinkingOffRequestPatch(
+  thinkingFormat: LocalModelCompatOverrides['thinkingFormat'],
+): Record<string, unknown> | undefined {
+  switch (thinkingFormat) {
+    case 'qwen-chat-template':
+      return { chat_template_kwargs: { enable_thinking: false, preserve_thinking: true } };
+    case 'qwen':
+      return { enable_thinking: false };
+    case 'zai':
+    case 'deepseek':
+      return { thinking: { type: 'disabled' } };
+    case 'together':
+      return { reasoning: { enabled: false } };
+    default:
+      return undefined;
+  }
 }
 
 function supportedByokThinkingApi(api: Api): Api | undefined {

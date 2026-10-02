@@ -979,6 +979,104 @@ describe('LocalModelResolver BYOK thinking', () => {
   );
 });
 
+describe('LocalModelResolver custom-provider explicit thinking off', () => {
+  // Regression test: a custom provider whose upstream template defaults to
+  // thinking ON unless the request says otherwise (e.g. Qwen served through a
+  // gateway) was sending no thinking-related field at all when the user
+  // toggled thinking off, because "nothing to compute when the toggle is
+  // off" skipped request-patch resolution entirely. The TUI showed
+  // "Thinking Off" while the model kept thinking on the wire.
+  const modelConfig: LocalModelConfig = {
+    reasoning: true,
+    thinking_config: { mode: 'switchable', default_value: 'false' },
+    compat: { thinkingFormat: 'qwen-chat-template' },
+  };
+
+  const resolveThinkingOff = async () => {
+    const resolver = new LocalModelResolver({
+      byokConfigGetter: () => ({
+        custom_provider: {
+          faxl: {
+            api: 'openai-completions',
+            options: { apiKey: 'faxl-key', baseURL: 'https://faxl.example/v1' },
+            models: { faxl: modelConfig },
+          },
+        },
+      }),
+    });
+    return resolver.resolveModel({
+      sessionId: 'session-thinking-off',
+      turnId: 'turn-thinking-off',
+      agentConfig: {
+        ...AGENT_CONFIG,
+        model: modelRefForModel('custom_provider:faxl', 'faxl', modelConfig),
+      },
+    });
+  };
+
+  it('still patches enable_thinking:false onto the request for qwen-chat-template', async () => {
+    const resolved = await resolveThinkingOff();
+
+    expect(resolved.thinkingLevel).toBeFalsy();
+    expect(resolved.thinkingRequestPatch).toMatchObject({
+      chat_template_kwargs: { enable_thinking: false },
+    });
+  });
+
+  it.each([
+    ['qwen', { enable_thinking: false }],
+    ['zai', { thinking: { type: 'disabled' } }],
+    ['deepseek', { thinking: { type: 'disabled' } }],
+    ['together', { reasoning: { enabled: false } }],
+  ] as const)('emits the off patch for thinkingFormat %s', async (thinkingFormat, expectedPatch) => {
+    const resolver = new LocalModelResolver({
+      byokConfigGetter: () => ({
+        custom_provider: {
+          gateway: {
+            api: 'openai-completions',
+            options: { apiKey: 'gateway-key', baseURL: 'https://gateway.example/v1' },
+            models: {
+              model: {
+                reasoning: true,
+                thinking_config: { mode: 'switchable', default_value: 'false' },
+                compat: { thinkingFormat },
+              },
+            },
+          },
+        },
+      }),
+    });
+    const resolved = await resolver.resolveModel({
+      sessionId: 'session-thinking-off-format',
+      turnId: 'turn-thinking-off-format',
+      agentConfig: {
+        ...AGENT_CONFIG,
+        model: { provider: 'custom_provider:gateway', model_id: 'model' },
+      },
+    });
+
+    expect(resolved.thinkingRequestPatch).toMatchObject(expectedPatch);
+  });
+
+  it('does not patch when the model is not configured as a custom provider', async () => {
+    const resolver = new LocalModelResolver({
+      byokConfigGetter: () => ({
+        minimax_api: { apiKey: 'test-key', baseURL: 'https://example.invalid' },
+      }),
+    });
+    const resolved = await resolver.resolveModel({
+      sessionId: 'session-not-custom',
+      turnId: 'turn-not-custom',
+      agentConfig: {
+        ...AGENT_CONFIG,
+        model: { provider: 'minimax_api', model_id: 'MiniMax-M3' },
+      },
+    });
+
+    expect(resolved.thinkingRequestPatch).toBeUndefined();
+  });
+});
+
 describe('LocalModelResolver credentials and thinking', () => {
   it('uses OAuth credentials only for the openai-codex provider', async () => {
     const logicalCaps: Array<number | undefined> = [];
