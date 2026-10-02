@@ -112,7 +112,7 @@ export function buildAgentContextBlock(env: AgentEnv, opts?: { teamModeOff?: boo
     lines.push(`  agentName: ${env.agentName}  # routing ID`);
     lines.push(`  agentRole: ${env.agentRole}  # agent type`);
   }
-  lines.push(`  SESSION ROLE: ${sessionRole}`, `  YOUR SESSION ID: ${env.sessionId}`);
+  lines.push(`  SESSION ROLE: ${sessionRole}`);
   if (env.parentSessionId) {
     lines.push(`  PARENT SESSION: ${env.parentSessionId}`);
     lines.push(buildParentResultDeliveryLine(env, isCloud));
@@ -142,7 +142,6 @@ export function buildAgentContextBlock(env: AgentEnv, opts?: { teamModeOff?: boo
   if (!env.environmentInSystemPrompt) {
     lines.push(`  platform: ${env.platform}`);
   }
-  lines.push(`  date: ${env.date}`);
   if (!env.environmentInSystemPrompt) {
     lines.push(`  systemLocale: ${env.systemLocale ?? 'en'}`);
     if (env.region) {
@@ -198,6 +197,11 @@ export function buildAgentContextBlock(env: AgentEnv, opts?: { teamModeOff?: boo
     }
   }
 
+  // SESSION ID and date change on every invocation/turn — keep them last so a
+  // caching provider sees the longest possible stable byte-prefix before the
+  // first volatile byte. See buildSlimAgentContextBlock for the same reason.
+  lines.push(`  YOUR SESSION ID: ${env.sessionId}`, `  date: ${env.date}`);
+
   lines.push('</agent-context>');
   return lines.join('\n');
 }
@@ -217,7 +221,6 @@ export function buildSlimAgentContextBlock(env: AgentEnv): string {
     lines.push(`  agentName: ${env.agentName}`);
   }
   lines.push(`  SESSION ROLE: ${sessionRole}`);
-  lines.push(`  YOUR SESSION ID: ${env.sessionId}`);
   if (env.parentSessionId) {
     lines.push(`  PARENT SESSION: ${env.parentSessionId}`);
     lines.push(buildParentResultDeliveryLine(env, isCloud));
@@ -225,7 +228,6 @@ export function buildSlimAgentContextBlock(env: AgentEnv): string {
   if (env.sessionType !== 1 && env.rootSessionId) {
     lines.push(`  YOUR AGENT ROOT SESSION: ${env.rootSessionId}`);
   }
-  lines.push(`  date: ${env.date}`);
   if (!env.environmentInSystemPrompt) {
     lines.push(`  systemLocale: ${env.systemLocale ?? 'en'}`);
     if (env.region) {
@@ -233,6 +235,10 @@ export function buildSlimAgentContextBlock(env: AgentEnv): string {
     }
   }
   addBrowserBridgeContextLines(lines, env.browserBridge);
+  // SESSION ID and date change on every invocation/turn — keep them last so a
+  // caching provider sees the longest possible stable byte-prefix before the
+  // first volatile byte. See buildAgentContextBlock for the same reason.
+  lines.push(`  YOUR SESSION ID: ${env.sessionId}`, `  date: ${env.date}`);
   lines.push('</agent-context>');
   return lines.join('\n');
 }
