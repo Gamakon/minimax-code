@@ -9,6 +9,12 @@ import type { LLMModelConfig } from '@mavis/agent-core/pi-turn-runner';
 import type { LocalRuntimeAuthContext } from '../contracts.js';
 
 const MANAGED_PROVIDER_USER_AGENT = 'MiniMaxAgent';
+// Identifies this fork to BYOK/custom providers too, not just managed ones —
+// e.g. faxl-proxy's console labels requests by this instead of falling back
+// to the HTTP client's own default UA. Matched against faxl's client-label
+// allowlist (faxl_proxy.py _CLIENT_LABELS); keep this string in sync with
+// that allowlist if either side changes.
+const CUSTOM_PROVIDER_USER_AGENT = 'faxleet';
 
 export function buildLocalProviderHeaders(input: {
   readonly headers?: Record<string, string>;
@@ -23,6 +29,9 @@ export function buildLocalProviderHeaders(input: {
     'X-Mavis-Agent-Id': input.agentId,
     'X-Mavis-Timezone-Offset': String(new Date().getTimezoneOffset() * -60),
   };
+  if (!Object.keys(headers).some((key) => key.toLowerCase() === 'user-agent')) {
+    headers['User-Agent'] = CUSTOM_PROVIDER_USER_AGENT;
+  }
   if (input.managedProvider) {
     for (const key of Object.keys(headers)) {
       if (key.toLowerCase() === 'bedrock-lane') delete headers[key];

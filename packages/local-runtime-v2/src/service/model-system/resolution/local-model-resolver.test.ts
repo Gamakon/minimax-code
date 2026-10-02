@@ -128,6 +128,60 @@ describe('LocalModelResolver', () => {
     });
     expect(resolved.fetch).toBe(fetchImpl);
   });
+
+  it('defaults the User-Agent on a custom provider when none is configured', async () => {
+    const resolver = new LocalModelResolver({
+      byokConfigGetter: () => ({
+        custom_provider: {
+          faxl: {
+            api: 'openai-completions',
+            options: { apiKey: 'faxl-key', baseURL: 'http://127.0.0.1:8767/v1' },
+            models: { faxl: {} },
+          },
+        },
+      }),
+    });
+
+    const resolved = await resolver.resolveModel({
+      sessionId: 'session-faxl',
+      turnId: 'turn-faxl',
+      agentConfig: {
+        ...AGENT_CONFIG,
+        model: { provider: 'custom_provider:faxl', model_id: 'faxl' },
+      },
+    });
+
+    expect(new Headers(resolved.headers).get('user-agent')).toBe('faxleet');
+  });
+
+  it('keeps a user-configured User-Agent on a custom provider instead of the default', async () => {
+    const resolver = new LocalModelResolver({
+      byokConfigGetter: () => ({
+        custom_provider: {
+          faxl: {
+            api: 'openai-completions',
+            options: {
+              apiKey: 'faxl-key',
+              baseURL: 'http://127.0.0.1:8767/v1',
+              headers: { 'User-Agent': 'my-custom-client/1.0' },
+            },
+            models: { faxl: {} },
+          },
+        },
+      }),
+    });
+
+    const resolved = await resolver.resolveModel({
+      sessionId: 'session-faxl-custom-ua',
+      turnId: 'turn-faxl-custom-ua',
+      agentConfig: {
+        ...AGENT_CONFIG,
+        model: { provider: 'custom_provider:faxl', model_id: 'faxl' },
+      },
+    });
+
+    expect(new Headers(resolved.headers).get('user-agent')).toBe('my-custom-client/1.0');
+  });
 });
 
 describe('LocalModelResolver dynamic output strategy', () => {
